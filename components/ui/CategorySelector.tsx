@@ -2,7 +2,7 @@ import { Colors } from "@/constants/Colors";
 import { useColorScheme, useThemeColor } from "@/hooks";
 import * as Haptics from "expo-haptics";
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { PanResponder, Pressable, StyleSheet, View } from "react-native";
 import { ThemedText } from "../ThemedText";
 
 interface SegmentedControlProps {
@@ -10,6 +10,7 @@ interface SegmentedControlProps {
   selectedIndex: number;
   onChange: (index: number) => void;
   style?: any;
+  swipeEnabled?: boolean;
 }
 
 const CategorySelector: React.FC<SegmentedControlProps> = ({
@@ -17,6 +18,7 @@ const CategorySelector: React.FC<SegmentedControlProps> = ({
   selectedIndex,
   onChange,
   style,
+  swipeEnabled = false,
 }) => {
   const colorScheme = useColorScheme() ?? "light";
   const theme = Colors[colorScheme];
@@ -32,6 +34,33 @@ const CategorySelector: React.FC<SegmentedControlProps> = ({
     onChange(index);
   };
 
+  const panResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          swipeEnabled &&
+          Math.abs(gestureState.dx) > 12 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+        onPanResponderRelease: (_, gestureState) => {
+          if (!swipeEnabled || Math.abs(gestureState.dx) < 36) {
+            return;
+          }
+
+          const direction = gestureState.dx < 0 ? 1 : -1;
+          const nextIndex = Math.max(
+            0,
+            Math.min(options.length - 1, selectedIndex + direction)
+          );
+
+          if (nextIndex !== selectedIndex) {
+            handleTabPress(nextIndex);
+          }
+        },
+      }),
+    [handleTabPress, options.length, selectedIndex, swipeEnabled]
+  );
+
   return (
     <View
       style={[
@@ -42,6 +71,7 @@ const CategorySelector: React.FC<SegmentedControlProps> = ({
         },
         style,
       ]}
+      {...(swipeEnabled ? panResponder.panHandlers : {})}
     >
       {options.map((option, index) => {
         const selected = index === selectedIndex;

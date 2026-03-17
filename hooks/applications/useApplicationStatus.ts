@@ -36,15 +36,14 @@ export function useApplicationStatus(config: ApplicationStatusConfig = {}) {
         const { data, error: fetchError } = await supabase
           .from('applications')
           .select('*, applicant_name_snapshot, applicant_phone_snapshot, job_title_snapshot, cv_document_id_snapshot, application_snapshot')
-          .or(`user_id.eq.${user.id},applicant_id.eq.${user.id}`)
+          .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 
         if (fetchError) throw fetchError;
         const matchingApplication =
           (data || []).find(
             (application: any) =>
-              application.post_id === normalizedPostIds[0] ||
-              application.job_id === normalizedPostIds[0]
+              application.post_id === normalizedPostIds[0]
           ) || null;
         setStatuses(matchingApplication ? [matchingApplication] : []);
       } else if (normalizedPostIds.length > 0) {
@@ -52,13 +51,12 @@ export function useApplicationStatus(config: ApplicationStatusConfig = {}) {
         const { data, error: fetchError } = await supabase
           .from('applications')
           .select('*, applicant_name_snapshot, applicant_phone_snapshot, job_title_snapshot, cv_document_id_snapshot, application_snapshot')
-          .or(`user_id.eq.${user.id},applicant_id.eq.${user.id}`);
+          .eq('user_id', user.id);
 
         if (fetchError) throw fetchError;
         const filteredStatuses = (data || []).filter(
           (application: any) =>
-            normalizedPostIds.includes(application.post_id) ||
-            normalizedPostIds.includes(application.job_id)
+            normalizedPostIds.includes(application.post_id)
         );
         setStatuses(filteredStatuses);
       } else {
@@ -66,7 +64,7 @@ export function useApplicationStatus(config: ApplicationStatusConfig = {}) {
         const { data, error: fetchError } = await supabase
           .from('applications')
           .select('*, applicant_name_snapshot, applicant_phone_snapshot, job_title_snapshot, cv_document_id_snapshot, application_snapshot')
-          .or(`user_id.eq.${user.id},applicant_id.eq.${user.id}`)
+          .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 
         if (fetchError) throw fetchError;

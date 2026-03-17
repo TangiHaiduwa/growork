@@ -9,6 +9,7 @@ import { PostType, ApplicationStatus } from '@/types/enums';
 
 import ContentCard from './ContentCard';
 import { useInteractions } from '@/hooks/posts/useInteractions';
+import { useApplicationStatuses } from '@/hooks/applications';
 
 interface BookmarkedContentListProps {
     items: BookmarkedItem[];
@@ -32,6 +33,25 @@ export default function BookmarkedContentList({
     const backgroundColor = useThemeColor({}, 'background');
     const cardBg = useThemeColor({}, 'backgroundSecondary');
     const { initializePosts } = useInteractions();
+    const { statuses: applicationStatuses } = useApplicationStatuses(
+        useMemo(
+            () =>
+                items
+                    .filter((i: BookmarkedItem) => i.type === 'post')
+                    .map((i: BookmarkedItem) => i.id)
+                    .filter(Boolean),
+            [items]
+        )
+    );
+
+    const appliedPostIds = useMemo(() => {
+        const set = new Set<string>();
+        for (const application of applicationStatuses || []) {
+            const id = (application as any).post_id || (application as any).job_id;
+            if (id) set.add(id);
+        }
+        return set;
+    }, [applicationStatuses]);
 
     // Memoize post IDs to avoid effect thrashing
     const postIds = useMemo(
@@ -109,6 +129,7 @@ export default function BookmarkedContentList({
                 mainImage={post.image_url}
                 createdAt={post.created_at}
                 criteria={post.criteria || undefined}
+                hasApplied={post.type === PostType.Job && appliedPostIds.has(item.id)}
                 user_id={post.user_id}
                 isOwnedByCurrentUser={
                     post.type === PostType.Job && !!user?.id && post.user_id === user.id
@@ -119,7 +140,7 @@ export default function BookmarkedContentList({
                 authorAvatarUrl={authorAvatarUrl}
             />
         );
-    }, [user?.id]);
+    }, [appliedPostIds, user?.id]);
 
     const renderApplicationItem = useCallback((item: BookmarkedItem) => {
         const application = item.data as any;

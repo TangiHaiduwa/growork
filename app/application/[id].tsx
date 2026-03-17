@@ -39,9 +39,7 @@ interface Document {
 interface ApplicationData {
   id: string;
   user_id: string;
-  applicant_id?: string | null;
   post_id: string;
-  job_id?: string | null;
   resume_id: string | null;
   cover_letter_id: string | null;
   resume_url: string | null;
@@ -87,10 +85,10 @@ interface ApplicationData {
 }
 
 const resolveApplicantId = (application: Partial<ApplicationData> & any) =>
-  application.user_id || application.applicant_id || "";
+  application.user_id || "";
 
 const resolvePostId = (application: Partial<ApplicationData> & any) =>
-  application.post_id || application.job_id || "";
+  application.post_id || "";
 
 const resolveCompanyId = (criteria: any) =>
   criteria?.companyId || criteria?.company_id || null;
@@ -215,7 +213,7 @@ export default function ApplicationDetailScreen() {
         const { data: applicantData, error: applicantError } = await supabase
           .from("legacy_public_profiles")
           .select(
-            "id, username, name, surname, avatar_url, bio, profession, phone, website, location, experience_years, education, skills"
+            "id, username, name, surname, avatar_url, bio, profession, website, location, experience_years, education, skills"
           )
           .eq("id", applicantId)
           .maybeSingle();
@@ -268,8 +266,7 @@ export default function ApplicationDetailScreen() {
           }
         }
 
-        // Fetch submitted/snapshotted documents first. This keeps the detail
-        // screen historically correct even if the applicant updates live docs.
+        // Fetch submitted documents referenced directly on the application row.
         const submittedDocumentIds = Array.from(
           new Set(
             [
@@ -295,34 +292,16 @@ export default function ApplicationDetailScreen() {
           }
         }
 
-        if (submittedDocuments.length === 0) {
-          const { data: documentsData, error: documentsError } = await supabase
-            .from("documents")
-            .select("id, type, name, file_url, uploaded_at")
-            .eq("application_id", id)
-            .eq("is_application_snapshot", true)
-            .order("uploaded_at", { ascending: false });
+        // Also load the applicant's uploaded documents (CVs, cover letters, certificates, etc.)
+        // so the employer can review everything the applicant has on file.
+        const { data: userDocuments } = await supabase
+          .from("documents")
+          .select("id, type, name, file_url, uploaded_at")
+          .eq("user_id", applicantId)
+          .order("uploaded_at", { ascending: false })
+          .limit(25);
 
-          if (documentsError) {
-          } else {
-            submittedDocuments = documentsData || [];
-          }
-        }
-
-        const liveFallbackDocuments =
-          submittedDocuments.length > 0
-            ? []
-            : (
-                await supabase
-                  .from("documents")
-                  .select("id, type, name, file_url, uploaded_at")
-                  .eq("user_id", applicantId)
-                  .eq("is_application_snapshot", false)
-                  .order("uploaded_at", { ascending: false })
-                  .limit(10)
-              ).data || [];
-
-        const documents = [...submittedDocuments, ...liveFallbackDocuments]
+        const documents = [...submittedDocuments, ...(userDocuments || [])]
           .filter(
             (document, index, array) =>
               array.findIndex((item) => item.id === document.id) === index
@@ -362,7 +341,7 @@ export default function ApplicationDetailScreen() {
           post_id: resolvePostId(applicationData),
           documents,
           posts: applicationData.posts,
-          profiles: applicantData || fallbackProfile,
+          profiles: { ...fallbackProfile, ...(applicantData ?? {}) },
           companies: companyData,
         };
 
@@ -390,18 +369,28 @@ export default function ApplicationDetailScreen() {
           text: "Update",
           onPress: async () => {
             try {
-              const { error } = await supabase
+              const { data: updatedRow, error } = await supabase
                 .from("applications")
                 .update({ status: newStatus })
-                .eq("id", applicationId);
+                .eq("id", applicationId)
+                .select("id, status")
+                .maybeSingle();
 
               if (error) {
                 Alert.alert("Error", "Failed to update application status");
                 return;
               }
 
+              if (!updatedRow) {
+                Alert.alert(
+                  "Not saved",
+                  "We couldn't persist this status change. This is usually a permissions (RLS) issue. Please try again after updating your database policies."
+                );
+                return;
+              }
+
               setApplication((prev: any) =>
-                prev ? { ...prev, status: newStatus } : null
+                prev ? { ...prev, status: updatedRow.status } : null
               );
 
               // Send email notification when status is changed to "Reviewed"
@@ -936,7 +925,6 @@ export default function ApplicationDetailScreen() {
                 />
               </>
             )}
-
             {application.status === ApplicationStatus.Reviewed && (
               <>
                 <ThemedButton
@@ -960,6 +948,43 @@ export default function ApplicationDetailScreen() {
                   style={{ flex: 1 }}
                 />
               </>
+            )}
+
+            {application.status === ApplicationStatus.Accepted && (
+              <>
+                <ThemedButton
+                  title="Undo hire"
+                  onPress={() =>
+                    handleApplicationStatusUpdate(
+                      application.id,
+                      ApplicationStatus.Reviewed
+                    )
+                  }
+                  style={{ flex: 1, backgroundColor: Colors.gray500 }}
+                  textStyle={{ color: Colors.white }}
+                />
+                <ThemedButton
+                  title="Hired"
+                  onPress={() => {}}
+                  disabled
+                  style={{ flex: 1, backgroundColor: Colors.success }}
+                  textStyle={{ color: Colors.white }}
+                />
+              </>
+            )}
+
+            {application.status === ApplicationStatus.Rejected && (
+              <ThemedButton
+                title="Reconsider"
+                onPress={() =>
+                  handleApplicationStatusUpdate(
+                    application.id,
+                    ApplicationStatus.Reviewed
+                  )
+                }
+                style={{ flex: 1, backgroundColor: Colors.gray500 }}
+                textStyle={{ color: Colors.white }}
+              />
             )}
           </View>
         </View>

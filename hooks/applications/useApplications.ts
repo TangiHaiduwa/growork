@@ -4,11 +4,9 @@ import { supabaseRequest } from '@/utils/supabaseRequest';
 import { useCallback, useEffect, useState } from 'react';
 import { sendApplicationStatusNotification } from '@/utils/notifications';
 
-const resolveApplicantId = (application: any) =>
-  application.user_id || application.applicant_id;
+const resolveApplicantId = (application: any) => application.user_id;
 
-const resolvePostId = (application: any) =>
-  application.post_id || application.job_id;
+const resolvePostId = (application: any) => application.post_id;
 
 export function useApplications(userId?: string) {
   const [applications, setApplications] = useState<Application[]>([]);
@@ -45,7 +43,7 @@ export function useApplications(userId?: string) {
             async () => {
               const { data, error, status } = await supabase
                 .from('legacy_public_profiles')
-                .select('id, username, full_name, avatar_url, bio, name, surname, phone')
+                .select('id, username, full_name, avatar_url, bio, name, surname')
                 .in('id', applicantIds);
               return { data, error, status };
             },
@@ -111,7 +109,7 @@ export function useApplications(userId?: string) {
             .select('*, applicant_name_snapshot, applicant_phone_snapshot, job_title_snapshot, cv_document_id_snapshot, application_snapshot')
             .order('created_at', { ascending: false });
           if (userId) {
-            query = query.eq('applicant_id', userId);
+            query = query.eq('user_id', userId);
           }
           const { data, error, status } = await query;
           return { data, error, status };
@@ -133,23 +131,56 @@ export function useApplications(userId?: string) {
       setLoading(true);
       setError(null);
 
-      const { data: myPosts } = await supabaseRequest<{ id: string }[]>(
-        async () => {
-          const { data, error, status } = await supabase
-            .from('posts')
-            .select('id')
-            .eq('user_id', currentUserId);
-          return { data, error, status };
-        },
-        { logTag: 'posts:mine' }
+      const [{ data: companiesData }, { data: myPosts }] = await Promise.all([
+        supabaseRequest<{ id: string }[]>(
+          async () => {
+            const { data, error, status } = await supabase
+              .from('companies')
+              .select('id')
+              .or(`user_id.eq.${currentUserId},owner_id.eq.${currentUserId}`);
+            return { data, error, status };
+          },
+          { logTag: 'posts:mine:companiesForUser' }
+        ),
+        supabaseRequest<{ id: string }[]>(
+          async () => {
+            const { data, error, status } = await supabase
+              .from('posts')
+              .select('id')
+              .eq('user_id', currentUserId);
+            return { data, error, status };
+          },
+          { logTag: 'posts:mine' }
+        ),
+      ]);
+
+      const companyIds = (companiesData || []).map((c) => c.id).filter(Boolean);
+
+      const { data: companyPosts } = companyIds.length
+        ? await supabaseRequest<{ id: string }[]>(
+            async () => {
+              const orFilters = [
+                `criteria->>companyId.in.(${companyIds.join(',')})`,
+                `criteria->>company_id.in.(${companyIds.join(',')})`,
+              ];
+              const { data, error, status } = await supabase
+                .from('posts')
+                .select('id')
+                .or(orFilters.join(','));
+              return { data, error, status };
+            },
+            { logTag: 'posts:mine:companyPosts' }
+          )
+        : { data: [] as { id: string }[] };
+
+      const postIds = Array.from(
+        new Set([...(myPosts || []), ...(companyPosts || [])].map((post) => post.id).filter(Boolean))
       );
 
-      if (!myPosts || myPosts.length === 0) {
+      if (!postIds.length) {
         setApplications([]);
         return;
       }
-
-      const postIds = myPosts.map(post => post.id);
 
       const { data: applicationsData } = await supabaseRequest<any[]>(
         async () => {
@@ -165,7 +196,7 @@ export function useApplications(userId?: string) {
                 criteria
               )
             `)
-            .or(`post_id.in.(${postIds.join(',')}),job_id.in.(${postIds.join(',')})`)
+            .in('post_id', postIds)
             .order('created_at', { ascending: false });
           return { data, error, status };
         },
@@ -173,7 +204,7 @@ export function useApplications(userId?: string) {
       );
 
       const applicantIds = Array.from(
-        new Set((applicationsData || []).map((app: any) => app.user_id || app.applicant_id).filter(Boolean))
+        new Set((applicationsData || []).map((app: any) => app.user_id).filter(Boolean))
       );
 
       let profilesById: Record<string, any> = {};
@@ -182,7 +213,7 @@ export function useApplications(userId?: string) {
           async () => {
             const { data, error, status } = await supabase
               .from('legacy_public_profiles')
-              .select('id, username, full_name, avatar_url, bio, name, surname, phone')
+              .select('id, username, full_name, avatar_url, bio, name, surname')
               .in('id', applicantIds);
             return { data, error, status };
           },
@@ -350,12 +381,12 @@ export function useApplications(userId?: string) {
 
   const checkIfApplied = useCallback(async (userId: string, postId: string) => {
     try {
-      const { data } = await supabaseRequest<{ id: string; post_id?: string | null; job_id?: string | null }[]>(
+      const { data } = await supabaseRequest<{ id: string; post_id?: string | null }[]>(
         async () => {
           const { data, error, status } = await supabase
             .from('applications')
-            .select('id, post_id, job_id')
-            .eq('applicant_id', userId)
+            .select('id, post_id')
+            .eq('user_id', userId)
             .order('created_at', { ascending: false });
           return { data, error, status };
         },
@@ -363,8 +394,7 @@ export function useApplications(userId?: string) {
       );
 
       const hasApplied = (data || []).some(
-        (application) =>
-          application.post_id === postId || application.job_id === postId
+        (application) => application.post_id === postId
       );
 
       return { hasApplied, error: null };

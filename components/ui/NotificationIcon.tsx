@@ -17,13 +17,18 @@ export function NotificationIcon({ size = 24, onPress }: NotificationIconProps) 
     const handlePress = () => {
         if (onPress) {
             onPress();
-        } else {
-            router.push('/notifications');
+            return;
         }
+        router.push('/notifications');
     };
 
     return (
-        <TouchableOpacity onPress={handlePress} style={styles.container}>
+        <TouchableOpacity
+            accessibilityRole="button"
+            onPress={handlePress}
+            style={styles.container}
+            activeOpacity={0.7}
+        >
             <Feather name="bell" size={size} color={iconColor} />
             <NotificationBadge />
         </TouchableOpacity>

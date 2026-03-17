@@ -76,6 +76,7 @@ const Header = ({
         options={["All", "Jobs", "News"]}
         selectedIndex={selectedContentType}
         onChange={onContentTypeChange}
+        swipeEnabled
       />
       <CustomOptionStrip
         visibleOptions={visibleIndustries}

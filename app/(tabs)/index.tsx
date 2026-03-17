@@ -14,7 +14,13 @@ import { Feather } from "@expo/vector-icons";
 
 import Header, { HEADER_HEIGHT } from "@/components/home/Header";
 import ScreenContainer from "@/components/ScreenContainer";
-import { useAuth, useHomeFeed, usePermissions, useThemeColor } from "@/hooks";
+import {
+  useApplicationStatuses,
+  useAuth,
+  useHomeFeed,
+  usePermissions,
+  useThemeColor,
+} from "@/hooks";
 import { ThemedText } from "@/components/ThemedText";
 import { useBottomSheetManager } from "@/components/content/BottomSheetManager";
 import ContentCard from "@/components/content/ContentCard";
@@ -82,6 +88,18 @@ export default function Home() {
   React.useEffect(() => {
     if (postIds.length) initializePosts(postIds);
   }, [postIdsKey, initializePosts]);
+
+  const { statuses: applicationStatuses, refresh: refreshApplicationStatuses } =
+    useApplicationStatuses(postIds);
+
+  const appliedPostIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const application of applicationStatuses || []) {
+      const id = (application as any).post_id || (application as any).job_id;
+      if (id) set.add(id);
+    }
+    return set;
+  }, [applicationStatuses]);
 
   const feedSummary = useMemo(() => {
     const items = page.items || [];
@@ -201,11 +219,13 @@ export default function Home() {
         };
 
         openJobApplicationSheet(jobPost, {
-          onSuccess: () => {},
+          onSuccess: () => {
+            refreshApplicationStatuses();
+          },
         });
       }
     },
-    [openJobApplicationSheet]
+    [openJobApplicationSheet, refreshApplicationStatuses]
   );
 
   const renderHeader = () => (
@@ -388,6 +408,7 @@ export default function Home() {
         renderItem={({ item }) => (
           <ContentCard
             {...item}
+            hasApplied={item.variant === "job" && !!item.id && appliedPostIds.has(item.id)}
             isOwnedByCurrentUser={
               item.variant === "job" && !!user?.id && item.user_id === user.id
             }

@@ -196,10 +196,11 @@ export function useNotifications(config: NotificationConfig = {}) {
         filter: `user_id=eq.${user.id}`
       }, (payload) => {
         const newNotification = payload.new as Notification;
-        setNotifications(prev => [newNotification, ...prev]);
-        if (!newNotification.read) {
-          setUnreadCount(prev => prev + 1);
-        }
+        setNotifications(prev => {
+          const next = [newNotification, ...prev];
+          setUnreadCount(next.filter(n => !n.read).length);
+          return next;
+        });
       })
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -208,19 +209,13 @@ export function useNotifications(config: NotificationConfig = {}) {
         filter: `user_id=eq.${user.id}`
       }, (payload) => {
         const updatedNotification = payload.new as Notification;
-        setNotifications(prev =>
-          prev.map(n =>
+        setNotifications(prev => {
+          const next = prev.map(n =>
             n.id === updatedNotification.id ? updatedNotification : n
-          )
-        );
-
-        // Update unread count
-        setUnreadCount(prev => {
-          const wasRead = (payload.old as Notification)?.read;
-          const isRead = updatedNotification.read;
-          if (wasRead && !isRead) return prev + 1;
-          if (!wasRead && isRead) return Math.max(0, prev - 1);
-          return prev;
+          );
+          // Don't rely on payload.old (often not available without replica identity).
+          setUnreadCount(next.filter(n => !n.read).length);
+          return next;
         });
       })
       .subscribe();

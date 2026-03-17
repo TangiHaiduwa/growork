@@ -18,7 +18,7 @@ export function useApplicationNotifications() {
         try {
             const { data: application } = await supabase
                 .from('applications')
-                .select('id, post_id, job_id, job_title_snapshot, application_snapshot, posts(id,title,user_id)')
+                .select('id, post_id, job_title_snapshot, application_snapshot, posts(id,title,user_id)')
                 .eq('id', applicationId)
                 .maybeSingle();
 
@@ -45,7 +45,7 @@ export function useApplicationNotifications() {
                     {
                         type: 'application_status',
                         applicationId,
-                        postId: application.post_id ?? application.job_id ?? post.id,
+                        postId: application.post_id ?? post.id,
                         newStatus,
                         postOwnerName: actorName,
                         jobTitle: postTitle,

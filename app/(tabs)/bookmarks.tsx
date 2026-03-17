@@ -7,6 +7,7 @@ import {
   Pressable,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 
 import ScreenContainer from "@/components/ScreenContainer";
@@ -34,6 +35,14 @@ export default function Bookmarks() {
   const { bookmarkedItems, loading, error, refreshBookmarks } = useBookmarks();
   const { initializePosts } = useInteractions();
   const router = useRouter();
+
+  useFocusEffect(
+    useCallback(() => {
+      // If a bookmark is toggled elsewhere, this tab may remain mounted.
+      // Refresh on focus so the list stays accurate.
+      refreshBookmarks();
+    }, [refreshBookmarks])
+  );
 
   const filteredItems = useMemo(() => {
     return bookmarkedItems.filter((item) => {

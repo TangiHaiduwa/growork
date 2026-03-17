@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 
 import ScreenContainer from "@/components/ScreenContainer";
@@ -106,11 +106,29 @@ export default function ApplicationsScreen() {
     if (user?.id && user.id !== lastUserId.current) {
       lastUserId.current = user.id;
       fetchApplications();
+    }
+  }, [user?.id, fetchApplications]);
+
+  // Ensure employer Incoming applications are always fetched once we know
+  // both the user id and that this user has business capabilities.
+  useEffect(() => {
+    if (user?.id && isBusinessUser) {
+      fetchApplicationsForMyPosts(user.id);
+    }
+  }, [user?.id, isBusinessUser, fetchApplicationsForMyPosts]);
+
+  // Keep data in sync whenever this screen regains focus (e.g. after
+  // accepting/rejecting from the application details screen).
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+
+      fetchApplications();
       if (isBusinessUser) {
         fetchApplicationsForMyPosts(user.id);
       }
-    }
-  }, [user?.id, isBusinessUser, fetchApplications, fetchApplicationsForMyPosts]);
+    }, [user?.id, isBusinessUser, fetchApplications, fetchApplicationsForMyPosts])
+  );
 
   const selectedTab = primaryTabs[selectedIndex];
   const activeStatusFilter = STATUS_FILTERS[statusIndex];
@@ -137,7 +155,7 @@ export default function ApplicationsScreen() {
     const byListing = selectedIncomingPostId
       ? incomingApplications.filter(
           (application: any) =>
-            (application.post_id || application.job_id) === selectedIncomingPostId
+            application.post_id === selectedIncomingPostId
         )
       : incomingApplications;
 

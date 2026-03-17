@@ -41,11 +41,9 @@ export function useMyPostApplications() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const resolveApplicantId = (application: any) =>
-    application.user_id || application.applicant_id;
+  const resolveApplicantId = (application: any) => application.user_id;
 
-  const resolvePostId = (application: any) =>
-    application.post_id || application.job_id;
+  const resolvePostId = (application: any) => application.post_id;
 
   const resolveCompanyId = (post: any) =>
     post?.criteria?.companyId || post?.criteria?.company_id || null;
@@ -56,24 +54,7 @@ export function useMyPostApplications() {
         setLoading(true);
         setError(null);
 
-        const { data: myPosts } = await supabaseRequest<{ id: string }[]>(
-          async () => {
-            const { data, error, status } = await supabase
-              .from("posts")
-              .select("id")
-              .eq("user_id", currentUserId);
-            return { data, error, status };
-          },
-          { logTag: "incoming:posts" }
-        );
-
-        if (!myPosts || myPosts.length === 0) {
-          setApplications([]);
-          return;
-        }
-
-        const postIds = myPosts.map((post) => post.id);
-
+        // Load applications with their posts, then filter by owner in JS.
         const { data: applicationsData } = await supabaseRequest<any[]>(
           async () => {
             const { data, error, status } = await supabase
@@ -86,32 +67,30 @@ export function useMyPostApplications() {
                 job_title_snapshot,
                 cv_document_id_snapshot,
                 application_snapshot,
-                posts (
+                posts!inner (
                   id,
                   title,
                   type,
                   industry,
-                  criteria
+                  criteria,
+                  user_id
                 )
               `
               )
-              .or(`post_id.in.(${postIds.join(",")}),job_id.in.(${postIds.join(",")})`)
               .order("created_at", { ascending: false });
             return { data, error, status };
           },
           { logTag: "incoming:applications" }
         );
 
+        console.log("[incoming] raw applications fetched:", (applicationsData || []).length);
+
         // Get user IDs from applications to fetch profiles separately
         const userIds = Array.from(
-          new Set(
-            (applicationsData || [])
-              .map((app: any) => resolveApplicantId(app))
-              .filter(Boolean)
-          )
+          new Set((applicationsData || []).map((app: any) => resolveApplicantId(app)).filter(Boolean))
         );
 
-        const companyIds = Array.from(
+        const applicationCompanyIds = Array.from(
           new Set(
             (applicationsData || [])
               .map((app: any) => {
@@ -128,20 +107,20 @@ export function useMyPostApplications() {
                 async () => {
                   const { data, error, status } = await supabase
                     .from("legacy_public_profiles")
-                    .select("id, username, name, surname, full_name, avatar_url, bio, phone")
+                    .select("id, username, name, surname, full_name, avatar_url, bio")
                     .in("id", userIds);
                   return { data, error, status };
                 },
                 { logTag: "incoming:profiles" }
               )
             : Promise.resolve({ data: [] as any[] }),
-          companyIds.length
+          applicationCompanyIds.length
             ? supabaseRequest<any[]>(
                 async () => {
                   const { data, error, status } = await supabase
                     .from("companies")
                     .select("id, name, logo_url")
-                    .in("id", companyIds);
+                    .in("id", applicationCompanyIds);
                   return { data, error, status };
                 },
                 { logTag: "incoming:companies" }
@@ -161,7 +140,13 @@ export function useMyPostApplications() {
 
         // Combine applications with their posts, profiles, and companies
         const applicationsWithProfiles =
-          applicationsData?.map((app: any) => {
+          (applicationsData || [])
+          // Keep only applications where the joined post is owned by this user
+          .filter((app: any) => {
+            const postRecord = Array.isArray(app.posts) ? app.posts[0] : app.posts;
+            return postRecord?.user_id === currentUserId;
+          })
+          .map((app: any) => {
             const resolvedPostId = resolvePostId(app);
             const applicantId = resolveApplicantId(app);
             const postRecord = Array.isArray(app.posts) ? app.posts[0] : app.posts;
@@ -221,14 +206,24 @@ export function useMyPostApplications() {
   const updateApplicationStatus = useCallback(
     async (applicationId: string, status: ApplicationStatus) => {
       try {
-        const { error } = await supabase
+        const { data: updatedRow, error } = await supabase
           .from("applications")
           .update({ status })
-          .eq("id", applicationId);
+          .eq("id", applicationId)
+          .select("id, status")
+          .maybeSingle();
 
         if (error) {
           throw error;
         }
+
+        if (!updatedRow) {
+          throw new Error(
+            "Status update was not persisted (no rows updated). This is usually an RLS/permission issue."
+          );
+        }
+
+        const persistedStatus = updatedRow.status;
 
         // Send notification to the applicant
         try {
@@ -238,7 +233,6 @@ export function useMyPostApplications() {
           .select(
             `
             user_id,
-            applicant_id,
             post_id,
             posts (
               title
@@ -256,7 +250,7 @@ export function useMyPostApplications() {
             const statusText = status.charAt(0).toUpperCase() + status.slice(1);
 
             await sendNotification(
-              applicationData.user_id || applicationData.applicant_id,
+              applicationData.user_id,
               "Application Status Update",
               `Your application for "${jobTitle}" has been ${statusText}`,
               "application_status",
@@ -274,7 +268,7 @@ export function useMyPostApplications() {
         // Update the local state
         setApplications((prev) =>
           prev.map((app) =>
-            app.id === applicationId ? { ...app, status } : app
+            app.id === applicationId ? { ...app, status: persistedStatus } : app
           )
         );
 
@@ -297,9 +291,7 @@ export function useMyPostApplications() {
 
   const filterApplicationsByPost = useCallback(
     (postId: string) => {
-      return applications.filter(
-        (app) => app.post_id === postId || app.job_id === postId
-      );
+      return applications.filter((app) => app.post_id === postId);
     },
     [applications]
   );

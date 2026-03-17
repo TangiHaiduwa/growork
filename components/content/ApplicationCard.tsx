@@ -80,6 +80,13 @@ export function ApplicationCard({
     router.push(`/application/${application.id}`);
   };
 
+  const getStatusLabel = (status: ApplicationStatus) => {
+    if (status === ApplicationStatus.Accepted) {
+      return 'Hired';
+    }
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
   const handleStatusUpdate = (newStatus: ApplicationStatus) => {
     if (onStatusUpdate) {
       onStatusUpdate(application.id, newStatus);
@@ -113,7 +120,7 @@ export function ApplicationCard({
             color={getStatusColor(application.status)}
           />
           <ThemedText style={[styles.statusText, { color: getStatusColor(application.status) }]}>
-            {application.status.charAt(0).toUpperCase() + application.status.slice(1)}
+            {getStatusLabel(application.status)}
           </ThemedText>
         </View>
       </View>
@@ -212,6 +219,24 @@ export function ApplicationCard({
                     <ThemedText style={styles.statusButtonText}>Reject</ThemedText>
                   </TouchableOpacity>
                 </>
+              )}
+              {application.status === ApplicationStatus.Accepted && (
+                <TouchableOpacity
+                  style={[styles.statusButton, { backgroundColor: '#525252' }]}
+                  onPress={() => handleStatusUpdate(ApplicationStatus.Reviewed)}
+                >
+                  <Feather name="rotate-ccw" size={14} color="#FFFFFF" />
+                  <ThemedText style={styles.statusButtonText}>Undo hire</ThemedText>
+                </TouchableOpacity>
+              )}
+              {application.status === ApplicationStatus.Rejected && (
+                <TouchableOpacity
+                  style={[styles.statusButton, { backgroundColor: '#525252' }]}
+                  onPress={() => handleStatusUpdate(ApplicationStatus.Reviewed)}
+                >
+                  <Feather name="rotate-ccw" size={14} color="#FFFFFF" />
+                  <ThemedText style={styles.statusButtonText}>Reconsider</ThemedText>
+                </TouchableOpacity>
               )}
             </View>
           )}

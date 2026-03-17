@@ -51,8 +51,6 @@ export function useBookmarks() {
               content,
               type,
               image_url,
-              company_name,
-              company_logo,
               created_at,
               user_id,
               criteria
@@ -171,7 +169,7 @@ export function useBookmarks() {
             async () => {
               const { data, error, status } = await supabase
                 .from('posts')
-                .select('id, title, content, type, company_name, company_logo, criteria')
+                .select('id, title, content, type, criteria')
                 .in('id', postIds);
               return { data, error, status };
             },

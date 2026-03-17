@@ -155,15 +155,17 @@ export default function PostInteractionBar({
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.iconButton}
+        style={[
+          styles.iconButton,
+          bookmarked ? { backgroundColor: `${tintColor}22` } : null,
+        ]}
         onPress={handleBookmark}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Feather 
-          name={bookmarked ? "bookmark" : "bookmark"} 
-          size={iconSize} 
+        <Feather
+          name="bookmark"
+          size={iconSize}
           color={bookmarked ? tintColor : iconColor}
-          fill={bookmarked ? tintColor : 'transparent'}
         />
       </TouchableOpacity>
     </View>
