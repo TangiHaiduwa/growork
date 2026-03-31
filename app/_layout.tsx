@@ -298,27 +298,7 @@ function AppContent() {
         }
 
         if (currentSession) {
-          // Try to refresh the session to validate the tokens
-          const {
-            data: { user },
-            error: refreshError,
-          } = await supabase.auth.refreshSession();
-
-          if (refreshError) {
-            // Handle refresh token error
-            const { shouldSignOut, userMessage } = await handleAuthError(
-              refreshError
-            );
-            console.error("Session refresh error:", userMessage);
-            if (shouldSignOut) {
-              if (isMounted) {
-                setSession(null);
-                setAuthError(userMessage);
-              }
-            }
-          } else if (user) {
-            if (isMounted) setSession(currentSession);
-          }
+          if (isMounted) setSession(currentSession);
         } else {
           if (isMounted) setSession(null);
         }

@@ -21,6 +21,7 @@ import * as Haptics from "expo-haptics";
 import { useFlashToast } from "@/components/ui/Flash";
 import { Spacing, Typography, BorderRadius } from "@/constants/DesignSystem";
 import { useThemeColor } from "@/hooks";
+import { formatDeadlineLabel } from "@/utils/postVisibility";
 
 const formatSalaryLabel = (salary?: string) =>
   salary ? salary.replace(/\$/g, "N$") : salary;
@@ -111,24 +112,9 @@ export default function PostForm({ onSuccess, onCancel, initialPost }: PostFormP
     onCancel?.();
   };
 
-  const getStepTitle = () => {
-    switch (currentStep) {
-      case WizardStep.BasicInfo:
-        return "Create Post";
-      case WizardStep.DetailsInfo:
-        return postType === PostType.Job ? "Job Details" : "Article Details";
-      case WizardStep.Review:
-        return "Review Post";
-      default:
-        return initialPost ? "Edit Post" : "Create Post";
-    }
-  };
-
   // Theme colors for review step
   const textColor = useThemeColor({}, "text");
   const mutedTextColor = useThemeColor({}, "mutedText");
-  const borderColor = useThemeColor({}, "border");
-  const backgroundColor = useThemeColor({}, "background");
 
   const renderStepContent = () => {
     switch (currentStep) {
@@ -272,6 +258,21 @@ export default function PostForm({ onSuccess, onCancel, initialPost }: PostFormP
                       style={[styles.detailValue, { color: textColor }]}
                     >
                       {formatSalaryLabel(jobFields.salary)}
+                    </ThemedText>
+                  </View>
+                )}
+
+                {postType === PostType.Job && jobFields.deadline && (
+                  <View style={styles.detailItem}>
+                    <ThemedText
+                      style={[styles.detailLabel, { color: mutedTextColor }]}
+                    >
+                      End Date
+                    </ThemedText>
+                    <ThemedText
+                      style={[styles.detailValue, { color: textColor }]}
+                    >
+                      {formatDeadlineLabel(jobFields.deadline)}
                     </ThemedText>
                   </View>
                 )}

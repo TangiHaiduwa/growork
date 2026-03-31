@@ -48,6 +48,7 @@ CREATE TABLE public.companies (
   description text,
   logo_url text,
   website text,
+  contact_email text,
   industry text,
   size text,
   founded_year integer,

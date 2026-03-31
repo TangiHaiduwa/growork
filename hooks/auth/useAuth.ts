@@ -1,17 +1,44 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { supabase } from '../../utils/supabase';
+import { useState, useCallback, useEffect } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
+import { supabase } from '../../utils/supabase';
+import { supabaseRequest } from '../../utils/supabaseRequest';
+import { ensureUserProfile } from '../../utils/profileUtils';
 import { useAuthOperations } from './useAuthOperations';
 import type { Profile } from '../../types';
 
+type AuthState = {
+  user: User | null;
+  session: Session | null;
+  profile: Profile | null;
+  loading: boolean;
+  profileLoading: boolean;
+  error: string | null;
+  profileLoaded: boolean;
+};
+
+const initialAuthState: AuthState = {
+  user: null,
+  session: null,
+  profile: null,
+  loading: true,
+  profileLoading: false,
+  error: null,
+  profileLoaded: false,
+};
+
+let authState: AuthState = initialAuthState;
+let authInitPromise: Promise<void> | null = null;
+let authListenerBound = false;
+let profileFetchPromise: Promise<Profile | null> | null = null;
+let profileFetchUserId: string | null = null;
+const listeners = new Set<(state: AuthState) => void>();
+
 // Supabase auth-js uses a storage-backed lock for auth token operations.
-// In dev (and in apps that call `useAuth()` from multiple components), auth
-// operations like `getSession()` can run concurrently and trip the lock timeout.
-// Serialize auth calls across the JS runtime to avoid deadlocks/timeouts.
+// In dev, repeated `getSession()` calls from multiple mounted components can
+// compete for that lock and throw noisy timeout/network-like errors.
 let authOpQueue: Promise<unknown> = Promise.resolve();
 function runAuthOp<T>(op: () => Promise<T>): Promise<T> {
   const next = authOpQueue.then(op, op);
-  // keep the queue alive even if op fails
   authOpQueue = next.then(
     () => undefined,
     () => undefined
@@ -19,250 +46,370 @@ function runAuthOp<T>(op: () => Promise<T>): Promise<T> {
   return next;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
+const emitAuthState = () => {
+  listeners.forEach((listener) => listener(authState));
+};
 
-  const {
-    fetchUserProfile,
-    updateUserProfile,
-    forceRefreshProfile,
-    isProfileLoaded
-  } = useAuthOperations();
+const setAuthState = (patch: Partial<AuthState>) => {
+  authState = {
+    ...authState,
+    ...patch,
+  };
+  emitAuthState();
+};
 
-  // Use refs to store the latest values to avoid dependency issues
-  const userRef = useRef<User | null>(null);
-  const fetchUserProfileRef = useRef(fetchUserProfile);
+const isConnectionTimeoutError = (error: any): boolean => {
+  const errorMessage = error?.message?.toLowerCase() || '';
+  return errorMessage.includes('upstream connect error') ||
+    errorMessage.includes('connection timeout') ||
+    errorMessage.includes('disconnect/reset before headers');
+};
 
-  // Update refs when values change
-  useEffect(() => {
-    userRef.current = user;
-    fetchUserProfileRef.current = fetchUserProfile;
+const isAuthLockTimeoutError = (err: any): boolean => {
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    msg.includes('acquiring process lock') ||
+    msg.includes('process lock') ||
+    msg.includes('auth-token') ||
+    msg.includes('lock:sb-')
+  );
+};
+
+const fetchUserProfile = async (userId: string): Promise<Profile | null> => {
+  if (profileFetchPromise && profileFetchUserId === userId) {
+    return profileFetchPromise;
+  }
+
+  profileFetchUserId = userId;
+  profileFetchPromise = (async () => {
+    try {
+      const { data: profile } = await supabaseRequest<any>(
+        async () => {
+          const { data, error, status } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+          return { data, error, status };
+        },
+        { logTag: 'profiles:getForAuth' }
+      );
+
+      if (profile) {
+        return profile;
+      }
+
+      console.warn('Profile not found, attempting to create one for user:', userId);
+      return await ensureUserProfile(userId);
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
+      return null;
+    } finally {
+      profileFetchPromise = null;
+      profileFetchUserId = null;
+    }
+  })();
+
+  return profileFetchPromise;
+};
+
+const loadProfileForSession = async (session: Session | null) => {
+  if (!session?.user) {
+    setAuthState({
+      profile: null,
+      profileLoading: false,
+      profileLoaded: false,
+    });
+    return;
+  }
+
+  setAuthState({
+    profileLoading: true,
+    error: null,
   });
 
-  // Helper function to check if error is a connection timeout
-  const isConnectionTimeoutError = (error: any): boolean => {
-    const errorMessage = error?.message?.toLowerCase() || '';
-    return errorMessage.includes('upstream connect error') ||
-      errorMessage.includes('connection timeout') ||
-      errorMessage.includes('disconnect/reset before headers');
-  };
+  const profile = await fetchUserProfile(session.user.id);
 
-  const isAuthLockTimeoutError = (err: any): boolean => {
-    const msg = String(err?.message || '').toLowerCase();
-    return (
-      msg.includes('acquiring process lock') ||
-      msg.includes('process lock') ||
-      msg.includes('auth-token') ||
-      msg.includes('lock:sb-')
-    );
-  };
+  setAuthState({
+    profile,
+    profileLoading: false,
+    profileLoaded: !!profile,
+  });
+};
 
-  // Handle auth state changes
-  const onAuthStateChange = useCallback(async (event: string, newSession: Session | null) => {
-    try {
-      setError(null);
-
-      if (event === 'SIGNED_IN' && newSession) {
-        setSession(newSession);
-        setUser(newSession.user);
-        setLoading(false);
-
-        // Fetch the user's profile if we have a user
-        if (newSession.user) {
-          setProfileLoading(true);
-          const userProfile = await fetchUserProfileRef.current(newSession.user.id);
-          if (userProfile) {
-            setProfile(userProfile);
-          }
-          setProfileLoading(false);
-        }
-      } else if (event === 'SIGNED_OUT') {
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-        setError(null);
-        setLoading(false);
-      }
-    } catch (err: any) {
-      console.error('Error in auth state change:', err);
-      setError(err.message || 'Authentication error occurred');
-      setProfileLoading(false);
-      setLoading(false);
+const handleAuthStateChange = async (
+  event: string,
+  newSession: Session | null
+) => {
+  try {
+    if (event === 'SIGNED_OUT') {
+      setAuthState({
+        user: null,
+        session: null,
+        profile: null,
+        profileLoading: false,
+        profileLoaded: false,
+        error: null,
+        loading: false,
+      });
+      return;
     }
-  }, []); // Empty dependency array since we use refs
 
-  // Initialize auth state
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+    setAuthState({
+      session: newSession,
+      user: newSession?.user ?? null,
+      loading: false,
+      error: null,
+    });
 
-        const { data: { session }, error: sessionError } = await runAuthOp(async () => {
-          // Get initial session (serialized to avoid auth lock contention)
-          return await supabase.auth.getSession();
+    if (newSession?.user) {
+      await loadProfileForSession(newSession);
+      return;
+    }
+
+    setAuthState({
+      profile: null,
+      profileLoading: false,
+      profileLoaded: false,
+    });
+  } catch (err: any) {
+    console.error('Error in auth state change:', err);
+    setAuthState({
+      error: err.message || 'Authentication error occurred',
+      profileLoading: false,
+      loading: false,
+    });
+  }
+};
+
+const initializeAuthStore = async () => {
+  if (!authListenerBound) {
+    authListenerBound = true;
+    supabase.auth.onAuthStateChange((event, session) => {
+      void handleAuthStateChange(event, session);
+    });
+  }
+
+  if (authInitPromise) {
+    return authInitPromise;
+  }
+
+  authInitPromise = (async () => {
+    try {
+      setAuthState({
+        loading: true,
+        error: null,
+      });
+
+      const { data: { session }, error: sessionError } = await runAuthOp(
+        async () => await supabase.auth.getSession()
+      );
+
+      if (sessionError) {
+        console.error('Error getting session:', sessionError);
+        setAuthState({
+          error: sessionError.message,
+          loading: false,
         });
+        return;
+      }
 
-        if (sessionError) {
-          console.error('Error getting session:', sessionError);
-          setError(sessionError.message);
+      setAuthState({
+        session,
+        user: session?.user ?? null,
+        loading: false,
+      });
+
+      if (session?.user) {
+        await loadProfileForSession(session);
+        return;
+      }
+
+      setAuthState({
+        profile: null,
+        profileLoading: false,
+        profileLoaded: false,
+      });
+    } catch (err: any) {
+      if (isAuthLockTimeoutError(err)) {
+        try {
+          await sleep(600);
+          const { data: { session }, error: sessionError } = await runAuthOp(
+            async () => await supabase.auth.getSession()
+          );
+
+          if (sessionError) {
+            console.error('Error getting session (after retry):', sessionError);
+            setAuthState({
+              error: sessionError.message,
+              loading: false,
+            });
+            return;
+          }
+
+          setAuthState({
+            session,
+            user: session?.user ?? null,
+            loading: false,
+          });
+
+          if (session?.user) {
+            await loadProfileForSession(session);
+            return;
+          }
+
+          setAuthState({
+            profile: null,
+            profileLoading: false,
+            profileLoaded: false,
+          });
+          return;
+        } catch (retryErr: any) {
+          console.error('Error initializing auth (retry):', retryErr);
+          setAuthState({
+            error: retryErr.message || 'Failed to initialize authentication',
+            loading: false,
+            profileLoading: false,
+          });
           return;
         }
-
-        if (session) {
-          setSession(session);
-          setUser(session.user);
-          setLoading(false);
-
-          // Fetch profile if we have a user
-          if (session.user) {
-            setProfileLoading(true);
-            const userProfile = await fetchUserProfileRef.current(session.user.id);
-            if (userProfile) {
-              setProfile(userProfile);
-            }
-            setProfileLoading(false);
-          }
-        }
-        else {
-          setLoading(false);
-        }
-      } catch (err: any) {
-        // Retry once if we hit Supabase auth lock contention
-        if (isAuthLockTimeoutError(err)) {
-          try {
-            await sleep(600);
-            const { data: { session }, error: sessionError } = await runAuthOp(async () => {
-              return await supabase.auth.getSession();
-            });
-            if (sessionError) {
-              console.error('Error getting session (after retry):', sessionError);
-              setError(sessionError.message);
-              return;
-            }
-            if (session) {
-              setSession(session);
-              setUser(session.user);
-              setLoading(false);
-              if (session.user) {
-                setProfileLoading(true);
-                const userProfile = await fetchUserProfileRef.current(session.user.id);
-                if (userProfile) setProfile(userProfile);
-                setProfileLoading(false);
-              }
-            } else {
-              setLoading(false);
-            }
-            return;
-          } catch (retryErr: any) {
-            console.error('Error initializing auth (retry):', retryErr);
-            setError(retryErr.message || 'Failed to initialize authentication');
-            setLoading(false);
-            return;
-          }
-        }
-
-        console.error('Error initializing auth:', err);
-        setError(err.message || 'Failed to initialize authentication');
-        setLoading(false);
       }
-    };
 
-    initializeAuth();
+      console.error('Error initializing auth:', err);
+      setAuthState({
+        error: err.message || 'Failed to initialize authentication',
+        loading: false,
+        profileLoading: false,
+      });
+    }
+  })();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(onAuthStateChange);
+  return authInitPromise;
+};
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [onAuthStateChange]);
+const subscribeToAuthState = (listener: (state: AuthState) => void) => {
+  listeners.add(listener);
+  listener(authState);
 
-  // Sign out
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
+export function useAuth() {
+  const [state, setState] = useState<AuthState>(authState);
+  const {
+    updateUserProfile,
+    forceRefreshProfile,
+  } = useAuthOperations();
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthState(setState);
+    void initializeAuthStore();
+
+    return unsubscribe;
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
-      setError(null);
+      setAuthState({ error: null });
       await supabase.auth.signOut();
     } catch (error: any) {
       console.error('Error signing out:', error);
-      setError(error.message || 'Failed to sign out');
+      setAuthState({
+        error: error.message || 'Failed to sign out',
+      });
     }
   }, []);
 
-  // Update profile
   const updateProfile = useCallback(async (updates: Partial<Profile>) => {
-    if (!user?.id) return null;
+    if (!authState.user?.id) return null;
 
     try {
-      setError(null);
-      setProfileLoading(true);
+      setAuthState({
+        error: null,
+        profileLoading: true,
+      });
 
-      const updatedProfile = await updateUserProfile(user.id, updates);
+      const updatedProfile = await updateUserProfile(authState.user.id, updates);
       if (updatedProfile) {
-        setProfile(updatedProfile);
+        setAuthState({
+          profile: updatedProfile,
+          profileLoaded: true,
+        });
 
-        // Force refresh profile to ensure cache is updated
-        const freshProfile = await forceRefreshProfile(user.id);
+        const freshProfile = await forceRefreshProfile(authState.user.id);
         if (freshProfile) {
-          setProfile(freshProfile);
+          setAuthState({
+            profile: freshProfile,
+            profileLoaded: true,
+          });
         }
       }
+
       return updatedProfile;
     } catch (error: any) {
       console.error('Error updating profile:', error);
-      setError(error.message || 'Failed to update profile');
+      setAuthState({
+        error: error.message || 'Failed to update profile',
+      });
       return null;
     } finally {
-      setProfileLoading(false);
+      setAuthState({
+        profileLoading: false,
+      });
     }
-  }, [user?.id, updateUserProfile, forceRefreshProfile]);
+  }, [forceRefreshProfile, updateUserProfile]);
 
-  // Force refresh profile (useful for components to call when they need fresh data)
   const refreshProfile = useCallback(async () => {
-    if (!user?.id) return null;
+    if (!authState.user?.id) return null;
 
     try {
-      setError(null);
-      setProfileLoading(true);
+      setAuthState({
+        error: null,
+        profileLoading: true,
+      });
 
-      const freshProfile = await forceRefreshProfile(user.id);
+      const freshProfile = await forceRefreshProfile(authState.user.id);
       if (freshProfile) {
-        setProfile(freshProfile);
+        setAuthState({
+          profile: freshProfile,
+          profileLoaded: true,
+        });
       }
+
       return freshProfile;
     } catch (error: any) {
       console.error('Error refreshing profile:', error);
-      setError(error.message || 'Failed to refresh profile');
+      setAuthState({
+        error: error.message || 'Failed to refresh profile',
+      });
       return null;
     } finally {
-      setProfileLoading(false);
+      setAuthState({
+        profileLoading: false,
+      });
     }
-  }, [user?.id, forceRefreshProfile]);
+  }, [forceRefreshProfile]);
 
-  // Clear error
   const clearError = useCallback(() => {
-    setError(null);
+    setAuthState({ error: null });
   }, []);
 
   return {
-    user,
-    session,
-    profile,
-    loading,
-    profileLoading,
-    error,
+    user: state.user,
+    session: state.session,
+    profile: state.profile,
+    loading: state.loading,
+    profileLoading: state.profileLoading,
+    error: state.error,
     signOut,
     updateProfile,
     refreshProfile,
     clearError,
-    isProfileLoaded: isProfileLoaded(),
+    isProfileLoaded: state.profileLoaded,
     isConnectionTimeoutError,
   };
 }

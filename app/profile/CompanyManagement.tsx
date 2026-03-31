@@ -62,6 +62,7 @@ const CompanyManagement = () => {
     name: "",
     description: "",
     website: "",
+    contact_email: "",
     industry: "",
     size: "",
     founded_year: "",
@@ -116,6 +117,7 @@ const CompanyManagement = () => {
             name: dbCompany.name || "",
             description: dbCompany.description || "",
             website: dbCompany.website || "",
+            contact_email: dbCompany.contact_email || "",
             industry: dbCompany.industry || "",
             size: dbCompany.size || "",
             founded_year: dbCompany.founded_year?.toString() || "",
@@ -533,6 +535,20 @@ const CompanyManagement = () => {
                     textInputPlaceholder: "https://example.com",
                     onTextInputChange: (text: string) =>
                       setEditedCompany((p) => ({ ...p, website: text })),
+                  },
+                  {
+                    title: "Contact Email",
+                    subtitle: editedCompany.contact_email || "Not set",
+                    icon: "mail",
+                    showTextInput: true,
+                    textInputValue: editedCompany.contact_email,
+                    textInputPlaceholder: "hr@company.com",
+                    onTextInputChange: (text: string) =>
+                      setEditedCompany((p) => ({ ...p, contact_email: text })),
+                    textInputProps: {
+                      keyboardType: "email-address",
+                      autoCapitalize: "none",
+                    },
                   },
                   {
                     title: "Company Size",

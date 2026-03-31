@@ -80,6 +80,7 @@ interface ApplicationData {
     id: string;
     name: string;
     logo_url: string | null;
+    contact_email?: string | null;
     owner_email?: string;
   } | null;
 }
@@ -235,7 +236,7 @@ export default function ApplicationDetailScreen() {
           // First fetch the company
           const { data: company, error: companyError } = await supabase
             .from("companies")
-            .select("id, name, logo_url, user_id")
+            .select("id, name, logo_url, user_id, contact_email")
             .eq("id", companyId)
             .single();
 
@@ -249,9 +250,9 @@ export default function ApplicationDetailScreen() {
                 .maybeSingle();
 
               if (!profileError && ownerProfile) {
-                const ownerEmail = ownerProfile.username
+                const ownerEmail = company.contact_email || (ownerProfile.username
                   ? `${ownerProfile.username}@growork.com`
-                  : null;
+                  : null);
 
                 companyData = {
                   ...company,

@@ -240,6 +240,11 @@ export default function EditProfileNative() {
       title: "Account Settings",
       data: [
         {
+          title: "Account Email",
+          subtitle: user?.email || "No email found for this account",
+          icon: "mail",
+        },
+        {
           title:
             editedProfile.user_type === UserType.Business
               ? primaryCompany

@@ -108,6 +108,11 @@ export default function Settings() {
       title: "Account",
       data: [
         {
+          title: "Account Email",
+          subtitle: user?.email || "No email found for this account",
+          icon: "mail",
+        },
+        {
           title: "Edit Profile",
           subtitle: "Update your personal information",
           icon: "user",

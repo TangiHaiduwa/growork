@@ -30,12 +30,21 @@ export function MyPostCard({
     post.criteria?.companyLogo || post.company_logo || post.profiles?.avatar_url || undefined;
   const companySubtitle =
     post.criteria?.location || post.industry || post.profiles?.profession || undefined;
+  const isExpired = Boolean((post as any).is_expired);
 
   const getStatusColor = (isActive: boolean) => {
+    if (isExpired) {
+      return "#FF9500";
+    }
+
     return isActive ? "#34C759" : "#FF3B30";
   };
 
   const getStatusIcon = (isActive: boolean) => {
+    if (isExpired) {
+      return "clock";
+    }
+
     return isActive ? "check-circle" : "pause-circle";
   };
 
@@ -183,7 +192,7 @@ export function MyPostCard({
                   { color: getStatusColor(post.is_active) },
                 ]}
               >
-                {post.is_active ? "Active" : "Paused"}
+                {isExpired ? "Expired" : post.is_active ? "Active" : "Paused"}
               </ThemedText>
             </View>
             <TouchableOpacity

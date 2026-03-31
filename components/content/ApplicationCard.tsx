@@ -11,6 +11,7 @@ import { ThemedAvatar } from '@/components/ui/ThemedAvatar';
 interface ApplicationCardProps {
   application: ApplicationWithDetails;
   onStatusUpdate?: (applicationId: string, status: ApplicationStatus) => void;
+  onWithdraw?: (applicationId: string) => void;
   showActions?: boolean;
   showPostDetails?: boolean;
 }
@@ -18,6 +19,7 @@ interface ApplicationCardProps {
 export function ApplicationCard({
   application,
   onStatusUpdate,
+  onWithdraw,
   showActions = true,
   showPostDetails = false,
 }: ApplicationCardProps) {
@@ -45,6 +47,7 @@ export function ApplicationCard({
   const borderColor = useThemeColor({}, 'border');
   const mutedTextColor = useThemeColor({}, 'mutedText');
   const tintColor = useThemeColor({}, 'tint');
+  const isEmployerCard = !!onStatusUpdate;
 
   const getStatusColor = (status: ApplicationStatus) => {
     switch (status) {
@@ -145,26 +148,58 @@ export function ApplicationCard({
       )}
 
       <View style={styles.content}>
-        {application.cover_letter && (
-          <View style={styles.attachmentRow}>
-            <Feather name="file-text" size={16} color={mutedTextColor} />
-            <ThemedText style={[styles.attachmentText, { color: mutedTextColor }]}>
-              Cover Letter
+        {isEmployerCard ? (
+          <>
+            <ThemedText style={[styles.documentsTitle, { color: textColor }]}>
+              Submitted Documents
             </ThemedText>
-          </View>
-        )}
-        {(application.resume_url || application.cv_document_id_snapshot) && (
-          <View style={styles.attachmentRow}>
-            <Feather name="file" size={16} color={mutedTextColor} />
-            <ThemedText style={[styles.attachmentText, { color: mutedTextColor }]}>
-              Submitted CV
-            </ThemedText>
-          </View>
+            {(application.resume_url || application.cv_document_id_snapshot) && (
+              <View style={styles.attachmentRow}>
+                <Feather name="file" size={16} color={mutedTextColor} />
+                <ThemedText style={[styles.attachmentText, { color: mutedTextColor }]}>
+                  CV attached
+                </ThemedText>
+              </View>
+            )}
+            {application.cover_letter && (
+              <View style={styles.attachmentRow}>
+                <Feather name="file-text" size={16} color={mutedTextColor} />
+                <ThemedText style={[styles.attachmentText, { color: mutedTextColor }]}>
+                  Cover letter submitted
+                </ThemedText>
+              </View>
+            )}
+            {!application.cover_letter &&
+            !(application.resume_url || application.cv_document_id_snapshot) ? (
+              <ThemedText style={[styles.attachmentText, { color: mutedTextColor }]}>
+                Review the applicant email for submitted files.
+              </ThemedText>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {application.cover_letter && (
+              <View style={styles.attachmentRow}>
+                <Feather name="file-text" size={16} color={mutedTextColor} />
+                <ThemedText style={[styles.attachmentText, { color: mutedTextColor }]}>
+                  Cover Letter
+                </ThemedText>
+              </View>
+            )}
+            {(application.resume_url || application.cv_document_id_snapshot) && (
+              <View style={styles.attachmentRow}>
+                <Feather name="file" size={16} color={mutedTextColor} />
+                <ThemedText style={[styles.attachmentText, { color: mutedTextColor }]}>
+                  Submitted CV
+                </ThemedText>
+              </View>
+            )}
+          </>
         )}
       </View>
 
-      {showActions && (
-        <View style={styles.actions}>
+      <View style={styles.actions}>
+        {!isEmployerCard ? (
           <TouchableOpacity
             style={[styles.viewButton, { borderColor }]}
             onPress={handleViewDetails}
@@ -174,72 +209,88 @@ export function ApplicationCard({
               View Details
             </ThemedText>
           </TouchableOpacity>
+        ) : (
+          <View />
+        )}
 
-          {onStatusUpdate && (
-            <View style={styles.statusButtons}>
-              {application.status === ApplicationStatus.Pending && (
-                <>
-                  <TouchableOpacity
-                    style={[styles.statusButton, { backgroundColor: '#525252' }]}
-                    onPress={() => handleStatusUpdate(ApplicationStatus.Reviewed)}
-                  >
-                    <Feather name="eye" size={14} color="#FFFFFF" />
-                    <ThemedText style={styles.statusButtonText}>Review</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.statusButton, { backgroundColor: '#34C759' }]}
-                    onPress={() => handleStatusUpdate(ApplicationStatus.Accepted)}
-                  >
-                    <Feather name="check" size={14} color="#FFFFFF" />
-                    <ThemedText style={styles.statusButtonText}>Accept</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.statusButton, { backgroundColor: '#FF3B30' }]}
-                    onPress={() => handleStatusUpdate(ApplicationStatus.Rejected)}
-                  >
-                    <Feather name="x" size={14} color="#FFFFFF" />
-                    <ThemedText style={styles.statusButtonText}>Reject</ThemedText>
-                  </TouchableOpacity>
-                </>
-              )}
-              {application.status === ApplicationStatus.Reviewed && (
-                <>
-                  <TouchableOpacity
-                    style={[styles.statusButton, { backgroundColor: '#34C759' }]}
-                    onPress={() => handleStatusUpdate(ApplicationStatus.Accepted)}
-                  >
-                    <Feather name="check" size={14} color="#FFFFFF" />
-                    <ThemedText style={styles.statusButtonText}>Accept</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.statusButton, { backgroundColor: '#FF3B30' }]}
-                    onPress={() => handleStatusUpdate(ApplicationStatus.Rejected)}
-                  >
-                    <Feather name="x" size={14} color="#FFFFFF" />
-                    <ThemedText style={styles.statusButtonText}>Reject</ThemedText>
-                  </TouchableOpacity>
-                </>
-              )}
-              {application.status === ApplicationStatus.Accepted && (
+        {onWithdraw && !onStatusUpdate ? (
+          <TouchableOpacity
+            style={styles.withdrawButton}
+            onPress={() => onWithdraw(application.id)}
+          >
+            <Feather name="trash-2" size={16} color="#FF3B30" />
+            <ThemedText style={styles.withdrawButtonText}>
+              Withdraw
+            </ThemedText>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {showActions && onStatusUpdate && (
+        <View style={styles.actions}>
+          <View style={styles.statusButtons}>
+            {application.status === ApplicationStatus.Pending && (
+              <>
                 <TouchableOpacity
                   style={[styles.statusButton, { backgroundColor: '#525252' }]}
                   onPress={() => handleStatusUpdate(ApplicationStatus.Reviewed)}
                 >
-                  <Feather name="rotate-ccw" size={14} color="#FFFFFF" />
-                  <ThemedText style={styles.statusButtonText}>Undo hire</ThemedText>
+                  <Feather name="eye" size={14} color="#FFFFFF" />
+                  <ThemedText style={styles.statusButtonText}>Review</ThemedText>
                 </TouchableOpacity>
-              )}
-              {application.status === ApplicationStatus.Rejected && (
                 <TouchableOpacity
-                  style={[styles.statusButton, { backgroundColor: '#525252' }]}
-                  onPress={() => handleStatusUpdate(ApplicationStatus.Reviewed)}
+                  style={[styles.statusButton, { backgroundColor: '#34C759' }]}
+                  onPress={() => handleStatusUpdate(ApplicationStatus.Accepted)}
                 >
-                  <Feather name="rotate-ccw" size={14} color="#FFFFFF" />
-                  <ThemedText style={styles.statusButtonText}>Reconsider</ThemedText>
+                  <Feather name="check" size={14} color="#FFFFFF" />
+                  <ThemedText style={styles.statusButtonText}>Accept</ThemedText>
                 </TouchableOpacity>
-              )}
-            </View>
-          )}
+                <TouchableOpacity
+                  style={[styles.statusButton, { backgroundColor: '#FF3B30' }]}
+                  onPress={() => handleStatusUpdate(ApplicationStatus.Rejected)}
+                >
+                  <Feather name="x" size={14} color="#FFFFFF" />
+                  <ThemedText style={styles.statusButtonText}>Reject</ThemedText>
+                </TouchableOpacity>
+              </>
+            )}
+            {application.status === ApplicationStatus.Reviewed && (
+              <>
+                <TouchableOpacity
+                  style={[styles.statusButton, { backgroundColor: '#34C759' }]}
+                  onPress={() => handleStatusUpdate(ApplicationStatus.Accepted)}
+                >
+                  <Feather name="check" size={14} color="#FFFFFF" />
+                  <ThemedText style={styles.statusButtonText}>Accept</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.statusButton, { backgroundColor: '#FF3B30' }]}
+                  onPress={() => handleStatusUpdate(ApplicationStatus.Rejected)}
+                >
+                  <Feather name="x" size={14} color="#FFFFFF" />
+                  <ThemedText style={styles.statusButtonText}>Reject</ThemedText>
+                </TouchableOpacity>
+              </>
+            )}
+            {application.status === ApplicationStatus.Accepted && (
+              <TouchableOpacity
+                style={[styles.statusButton, { backgroundColor: '#525252' }]}
+                onPress={() => handleStatusUpdate(ApplicationStatus.Reviewed)}
+              >
+                <Feather name="rotate-ccw" size={14} color="#FFFFFF" />
+                <ThemedText style={styles.statusButtonText}>Undo hire</ThemedText>
+              </TouchableOpacity>
+            )}
+            {application.status === ApplicationStatus.Rejected && (
+              <TouchableOpacity
+                style={[styles.statusButton, { backgroundColor: '#525252' }]}
+                onPress={() => handleStatusUpdate(ApplicationStatus.Reviewed)}
+              >
+                <Feather name="rotate-ccw" size={14} color="#FFFFFF" />
+                <ThemedText style={styles.statusButtonText}>Reconsider</ThemedText>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
     </ThemedView>
@@ -303,6 +354,12 @@ const styles = StyleSheet.create({
   },
   content: {
     marginBottom: 12,
+    gap: 4,
+  },
+  documentsTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 2,
   },
   attachmentRow: {
     flexDirection: 'row',
@@ -330,6 +387,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     marginLeft: 4,
+  },
+  withdrawButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+    gap: 6,
+  },
+  withdrawButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FF3B30',
   },
   statusButtons: {
     flexDirection: 'row',

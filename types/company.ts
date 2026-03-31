@@ -6,6 +6,7 @@ export interface Company {
   description: string | null;
   logo_url: string | null;
   website: string | null;
+  contact_email: string | null;
   industry: string | null;
   size: string | null; // e.g., "1-10", "11-50", "51-200", "201-500", "500+"
   founded_year: number | null;
@@ -23,6 +24,7 @@ export interface CompanyFormData {
   name: string;
   description: string;
   website: string;
+  contact_email: string;
   industry: string;
   size: string;
   founded_year: string;

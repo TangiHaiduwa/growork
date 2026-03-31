@@ -26,6 +26,7 @@ export function usePostForm(onSuccess?: () => void, initialPost?: Post | null) {
     salary: '',
     jobType: '',
     industry: '',
+    deadline: '',
     company: '',
     companyId: undefined,
     companyLogo: undefined,
@@ -52,6 +53,7 @@ export function usePostForm(onSuccess?: () => void, initialPost?: Post | null) {
         salary: post.criteria?.salary || '',
         jobType: post.criteria?.jobType || '',
         industry: post.industry || '',
+        deadline: post.criteria?.deadline || '',
         company: post.criteria?.company || post.company_name || '',
         companyId: post.criteria?.companyId || post.criteria?.company_id || undefined,
         companyLogo: post.criteria?.companyLogo || post.company_logo || undefined,
@@ -89,6 +91,7 @@ export function usePostForm(onSuccess?: () => void, initialPost?: Post | null) {
       salary: '',
       jobType: '',
       industry: '',
+      deadline: '',
       company: '',
       companyId: undefined,
       companyLogo: undefined,
@@ -146,6 +149,15 @@ export function usePostForm(onSuccess?: () => void, initialPost?: Post | null) {
       return;
     }
 
+    if (postType === PostType.Job && !jobFields.deadline) {
+      Flash.show({
+        type: "danger",
+        message: "End date required",
+        description: "Choose when this job listing should expire.",
+      });
+      return;
+    }
+
     const baseCriteria = initialPost?.criteria || {};
     let criteria = { ...baseCriteria };
     let industry = null;
@@ -159,6 +171,7 @@ export function usePostForm(onSuccess?: () => void, initialPost?: Post | null) {
         location: jobFields.location,
         salary: jobFields.salary,
         jobType: jobFields.jobType,
+        deadline: jobFields.deadline,
       };
       industry = jobFields.industry;
     } else if (postType === PostType.News) {

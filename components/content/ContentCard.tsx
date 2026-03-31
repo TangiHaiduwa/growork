@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, memo } from "react";
+import React, { useCallback, memo } from "react";
 import { View, StyleSheet, Pressable } from "react-native";
 import { Image } from "expo-image";
 import { Feather } from "@expo/vector-icons";
-import { BadgeCheck } from "lucide-react-native";
 import { useRouter } from "expo-router";
 
 import { ThemedText } from "../ThemedText";
@@ -42,6 +41,7 @@ interface ContentCardProps {
     location?: string;
     salary?: string;
     jobType?: string;
+    deadline?: string;
     source?: string;
     publication_date?: string;
   };

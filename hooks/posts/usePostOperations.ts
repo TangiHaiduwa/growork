@@ -3,6 +3,7 @@ import { supabase } from '@/utils/supabase';
 import { supabaseRequest } from '@/utils/supabaseRequest';
 import { PostType } from '@/types';
 import { ContentCardProps } from '@/components/content/ContentCard';
+import { filterExpiredPublicPosts } from '@/utils/postVisibility';
 
 export type ExtendedContentCardProps = ContentCardProps & {
   industry?: string;
@@ -149,6 +150,7 @@ export function usePostOperations() {
         location: criteriaData.location || undefined,
         salary: criteriaData.salary || undefined,
         jobType: criteriaData.jobType || undefined,
+        deadline: criteriaData.deadline || undefined,
         source: criteriaData.source || undefined,
         publication_date: criteriaData.publication_date || undefined,
       };
@@ -361,7 +363,8 @@ export function usePostOperations() {
           { logTag: 'posts:listWithRelations' }
         );
 
-        return postsData || [];
+        const posts = postsData || [];
+        return filters?.userId ? posts : filterExpiredPublicPosts(posts);
       } catch (error) {
         console.error('Error fetching posts with data:', error);
         throw error;

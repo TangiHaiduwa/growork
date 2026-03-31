@@ -299,6 +299,51 @@ export function useApplications(userId?: string) {
     }
   }, [fetchApplications]);
 
+  const withdrawApplication = useCallback(async (applicationId: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data: deletedRows } = await supabaseRequest<{ id: string }[]>(
+        async () => {
+          let query = supabase
+            .from('applications')
+            .delete()
+            .eq('id', applicationId)
+            .select('id');
+
+          if (userId) {
+            query = query.eq('user_id', userId);
+          }
+
+          const { data, error, status } = await query;
+          return { data, error, status };
+        },
+        { logTag: 'applications:withdraw' }
+      );
+
+      if (!deletedRows?.length) {
+        throw new Error('This application could not be withdrawn.');
+      }
+
+      setApplications((prev) =>
+        prev.filter((application: any) => application.id !== applicationId)
+      );
+
+      if (userId) {
+        await fetchApplications();
+      }
+
+      return { error: null };
+    } catch (err: any) {
+      console.error('Error withdrawing application:', err);
+      setError(err.message);
+      return { error: err };
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchApplications, userId]);
+
   const updateApplicationStatus = useCallback(async (applicationId: string, status: ApplicationStatus) => {
     try {
       const { data: applicationData } = await supabaseRequest<any>(
@@ -411,6 +456,7 @@ export function useApplications(userId?: string) {
     fetchApplications,
     fetchApplicationsForMyPosts,
     addApplication,
+    withdrawApplication,
     updateApplicationStatus,
     checkIfApplied,
   };

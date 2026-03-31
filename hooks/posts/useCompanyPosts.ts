@@ -1,8 +1,8 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback } from 'react';
 import { supabase } from '@/utils/supabase';
 import { supabaseRequest } from '@/utils/supabaseRequest';
-import { Post } from '@/types/posts';
 import { useDataFetching } from '../data';
+import { filterExpiredPublicPosts } from '@/utils/postVisibility';
 
 export function useCompanyPosts(companyId: string) {
     const fetchCompanyPosts = useCallback(async (): Promise<any[]> => {
@@ -56,7 +56,7 @@ export function useCompanyPosts(companyId: string) {
                 { logTag: 'posts:listForCompany' }
             );
 
-            const posts = postsData || [];
+            const posts = filterExpiredPublicPosts(postsData || []);
 
             // Batch-fetch author profiles for these posts
             const userIds = Array.from(new Set(posts.map((p: any) => p.user_id).filter(Boolean)));

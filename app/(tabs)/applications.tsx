@@ -63,6 +63,7 @@ export default function ApplicationsScreen() {
     loading: myApplicationsLoading,
     error: myApplicationsError,
     fetchApplications,
+    withdrawApplication,
   } = useApplications(user?.id);
   const {
     applications: incomingApplications,
@@ -82,6 +83,7 @@ export default function ApplicationsScreen() {
     applicationId: string;
     newStatus: ApplicationStatus;
   } | null>(null);
+  const [pendingWithdrawalId, setPendingWithdrawalId] = useState<string | null>(null);
   const toast = useFlashToast();
 
   const backgroundColor = useThemeColor({}, "background");
@@ -218,10 +220,15 @@ export default function ApplicationsScreen() {
     []
   );
 
+  const handleWithdrawApplication = useCallback((applicationId: string) => {
+    setPendingWithdrawalId(applicationId);
+  }, []);
+
   const renderApplicationItem = ({ item }: { item: any }) => (
     <ApplicationCard
       application={item}
       onStatusUpdate={selectedTab === INCOMING_LABEL ? handleApplicationStatusUpdate : undefined}
+      onWithdraw={selectedTab === MY_APPLICATIONS_LABEL ? handleWithdrawApplication : undefined}
       showActions={selectedTab === INCOMING_LABEL}
       showPostDetails={selectedTab === INCOMING_LABEL}
     />
@@ -473,6 +480,53 @@ export default function ApplicationsScreen() {
         ]}
         cancelLabel="Close"
         onCancel={() => setShowIncomingFilterModal(false)}
+      />
+      <ActionPromptModal
+        visible={!!pendingWithdrawalId}
+        title="Withdraw application?"
+        message="This will remove your application for this job. You can apply again later if the listing is still open."
+        confirmLabel="Withdraw"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setPendingWithdrawalId(null)}
+        onConfirm={async () => {
+          if (!pendingWithdrawalId) {
+            return;
+          }
+
+          const applicationId = pendingWithdrawalId;
+          setPendingWithdrawalId(null);
+
+          try {
+            const result = await withdrawApplication(applicationId);
+            if (result.error) {
+              const message =
+                String(result.error?.message || "").includes(
+                  "could not be withdrawn"
+                )
+                  ? "This account is not allowed to withdraw applications yet. Please add the applicant delete policy in Supabase."
+                  : "We could not remove this application right now.";
+              toast.show({
+                type: "danger",
+                title: "Unable to withdraw",
+                message,
+              });
+              return;
+            }
+
+            toast.show({
+              type: "success",
+              title: "Application withdrawn",
+              message: "This application has been removed from your list.",
+            });
+          } catch (_error) {
+            toast.show({
+              type: "danger",
+              title: "Unable to withdraw",
+              message: "An unexpected error occurred.",
+            });
+          }
+        }}
       />
       <FlatList
         removeClippedSubviews={false}

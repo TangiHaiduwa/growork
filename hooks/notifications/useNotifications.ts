@@ -94,18 +94,7 @@ export function useNotifications(config: NotificationConfig = {}) {
         .eq('user_id', user.id);
 
       if (error) throw error;
-
-      // Update local state
-      setNotifications(prev =>
-        prev.map(notification =>
-          notification.id === notificationId
-            ? { ...notification, read: true }
-            : notification
-        )
-      );
-
-      // Update unread count
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      await fetchNotificationsRef.current?.();
     } catch (err: any) {
       console.error('Error marking notification as read:', err);
     }
@@ -123,14 +112,7 @@ export function useNotifications(config: NotificationConfig = {}) {
         .eq('read', false);
 
       if (error) throw error;
-
-      // Update local state
-      setNotifications(prev =>
-        prev.map(notification => ({ ...notification, read: true }))
-      );
-
-      // Reset unread count
-      setUnreadCount(0);
+      await fetchNotificationsRef.current?.();
     } catch (err: any) {
       console.error('Error marking all notifications as read:', err);
     }
@@ -148,15 +130,7 @@ export function useNotifications(config: NotificationConfig = {}) {
         .eq('user_id', user.id);
 
       if (error) throw error;
-
-      // Update local state using the ref to avoid dependency issues
-      const deletedNotification = notificationsRef.current.find(n => n.id === notificationId);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-
-      // Update unread count if deleted notification was unread
-      if (deletedNotification && !deletedNotification.read) {
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      }
+      await fetchNotificationsRef.current?.();
     } catch (err: any) {
       console.error('Error deleting notification:', err);
     }
@@ -194,29 +168,24 @@ export function useNotifications(config: NotificationConfig = {}) {
         schema: 'public',
         table: 'notifications',
         filter: `user_id=eq.${user.id}`
-      }, (payload) => {
-        const newNotification = payload.new as Notification;
-        setNotifications(prev => {
-          const next = [newNotification, ...prev];
-          setUnreadCount(next.filter(n => !n.read).length);
-          return next;
-        });
+      }, () => {
+        void fetchNotificationsRef.current?.();
       })
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: 'notifications',
         filter: `user_id=eq.${user.id}`
-      }, (payload) => {
-        const updatedNotification = payload.new as Notification;
-        setNotifications(prev => {
-          const next = prev.map(n =>
-            n.id === updatedNotification.id ? updatedNotification : n
-          );
-          // Don't rely on payload.old (often not available without replica identity).
-          setUnreadCount(next.filter(n => !n.read).length);
-          return next;
-        });
+      }, () => {
+        void fetchNotificationsRef.current?.();
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        void fetchNotificationsRef.current?.();
       })
       .subscribe();
 

@@ -12,6 +12,12 @@ interface EmailAttachment {
   path?: string;
 }
 
+type SendEmailParams = {
+  to: string;
+  subject: string;
+  html: string;
+};
+
 const getApplicantData = (applicationData: any) => {
   const snapshotApplicant = applicationData?.application_snapshot?.applicant || {};
   const liveApplicant = applicationData?.profiles || {};
@@ -356,6 +362,40 @@ export const generateStatusUpdateEmail = (
     </body>
     </html>
   `;
+};
+
+export const sendEmailViaEdgeFunction = async ({
+  to,
+  subject,
+  html,
+}: SendEmailParams) => {
+  const functionBaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_KEY;
+
+  if (!functionBaseUrl || !anonKey) {
+    throw new Error("Missing Supabase email function configuration");
+  }
+
+  const response = await fetch(`${functionBaseUrl}/functions/v1/send-email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${anonKey}`,
+    },
+    body: JSON.stringify({
+      to,
+      subject,
+      html,
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || !payload?.success) {
+    throw new Error(payload?.error || `Email request failed: ${response.status}`);
+  }
+
+  return payload;
 };
 
 export type { EmailAttachment, EmailData };

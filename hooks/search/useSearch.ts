@@ -3,6 +3,7 @@ import { supabase } from "@/utils/supabase";
 import { supabaseRequest } from "@/utils/supabaseRequest";
 import { PostWithProfile } from "../posts";
 import { PostType } from "@/types/enums";
+import { filterExpiredPublicPosts } from "@/utils/postVisibility";
 
 export type SearchResult = PostWithProfile & { _type: "post" };
 
@@ -82,7 +83,7 @@ export function useSearch() {
         }
 
         setResults(
-          (postsData || []).map((post) => ({
+          filterExpiredPublicPosts(postsData || []).map((post) => ({
             ...post,
             profiles: profilesMap[post.user_id] || null,
             likes: [],

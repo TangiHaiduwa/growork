@@ -41,6 +41,16 @@ export const CompanyHeader: React.FC<CompanyHeaderProps> = ({
     }
   };
 
+  const handleEmailPress = () => {
+    if (!company.contact_email) {
+      return;
+    }
+
+    Linking.openURL(`mailto:${company.contact_email}`).catch(() => {
+      Alert.alert("Unavailable", "We could not open your email app right now.");
+    });
+  };
+
   return (
     <ThemedView style={styles.container}>
       {/* Company Basic Info with Stats Inline */}
@@ -121,18 +131,32 @@ export const CompanyHeader: React.FC<CompanyHeaderProps> = ({
       )}
 
       {/* Contact Information */}
-      {company.website && (
+      {(company.website || company.contact_email) && (
         <ThemedView style={styles.contactSection}>
-          <TouchableOpacity
-            style={styles.websiteButton}
-            onPress={handleWebsitePress}
-          >
-            <Feather name="globe" size={16} color={tintColor} />
-            <ThemedText style={[styles.websiteText, { color: tintColor }]}>
-              Visit Website
-            </ThemedText>
-            <Feather name="external-link" size={14} color={tintColor} />
-          </TouchableOpacity>
+          {company.website ? (
+            <TouchableOpacity
+              style={styles.websiteButton}
+              onPress={handleWebsitePress}
+            >
+              <Feather name="globe" size={16} color={tintColor} />
+              <ThemedText style={[styles.websiteText, { color: tintColor }]}>
+                Visit Website
+              </ThemedText>
+              <Feather name="external-link" size={14} color={tintColor} />
+            </TouchableOpacity>
+          ) : null}
+          {company.contact_email ? (
+            <TouchableOpacity
+              style={styles.websiteButton}
+              onPress={handleEmailPress}
+            >
+              <Feather name="mail" size={16} color={tintColor} />
+              <ThemedText style={[styles.websiteText, { color: tintColor }]}>
+                {company.contact_email}
+              </ThemedText>
+              <Feather name="external-link" size={14} color={tintColor} />
+            </TouchableOpacity>
+          ) : null}
         </ThemedView>
       )}
     </ThemedView>

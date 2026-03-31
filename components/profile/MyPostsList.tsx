@@ -15,10 +15,12 @@ import { deletePost } from "@/hooks/posts/usePostOperations";
 import { useBottomSheetManager } from "@/components/content/BottomSheetManager";
 import { PostWithProfile } from "@/hooks/posts";
 import { PostType } from "@/types";
+import { isPostExpired } from "@/utils/postVisibility";
 
 interface MyPost extends PostWithProfile {
   is_active: boolean;
   applications_count: number;
+  is_expired?: boolean;
 }
 
 export default function MyPostsList() {
@@ -94,13 +96,7 @@ export default function MyPostsList() {
 
   const enrichedPosts = useMemo(() => {
     return posts.map((item) => {
-      const deadline = item.criteria?.deadline
-        ? new Date(item.criteria.deadline)
-        : null;
-      const isExpired =
-        item.type === "job" && deadline instanceof Date && !Number.isNaN(deadline.getTime())
-          ? deadline.getTime() < Date.now()
-          : false;
+      const isExpired = isPostExpired(item);
 
       const isActiveFlag = item.criteria?.is_active;
       const isActive =
@@ -110,6 +106,7 @@ export default function MyPostsList() {
         ...item,
         is_active: isActive,
         applications_count: applicationCounts[item.id] || 0,
+        is_expired: isExpired,
       } satisfies MyPost;
     });
   }, [applicationCounts, posts]);

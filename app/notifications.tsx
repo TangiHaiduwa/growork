@@ -37,16 +37,6 @@ export default function NotificationsScreen() {
     limit: 50,
   });
 
-  const getNotificationTarget = useCallback((notification: Notification) => {
-    const data = notification.data || {};
-
-    return {
-      postId: data.postId || data.post_id,
-      applicationId: data.applicationId || data.application_id,
-      companyId: data.companyId || data.company_id,
-    };
-  }, []);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -58,24 +48,11 @@ export default function NotificationsScreen() {
 
   const handleNotificationPress = useCallback(
     async (notification: Notification) => {
-      // Mark as read if unread
       if (!notification.read && markAsRead) {
         await markAsRead(notification.id);
       }
-
-      const { postId, applicationId, companyId } =
-        getNotificationTarget(notification);
-
-      // Navigate based on notification type
-      if (postId) {
-        router.push(`/post/${postId}`);
-      } else if (applicationId) {
-        router.push(`/application/${applicationId}`);
-      } else if (companyId) {
-        router.push(`/company/${companyId}`);
-      }
     },
-    [getNotificationTarget, markAsRead, router]
+    [markAsRead]
   );
 
   const formatNotificationTime = useCallback((dateString: string) => {

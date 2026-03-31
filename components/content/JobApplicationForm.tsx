@@ -19,6 +19,11 @@ import DocumentCard from "./DocumentCard";
 import DocumentManager from "./DocumentManager";
 import * as Haptics from "expo-haptics";
 import { useFlashToast } from "@/components/ui/Flash";
+import {
+  generateStatusUpdateEmail,
+  sendEmailViaEdgeFunction,
+} from "@/utils/emailService";
+import { supabase } from "@/utils/supabase";
 
 export enum ApplicationStep {
   CVSelection = 0,
@@ -45,10 +50,14 @@ function isDuplicateApplicationError(error: any) {
     (combined.includes("applications_user_id_post_id_key") ||
       combined.includes("applications_applicant_id_job_id_key") ||
       combined.includes("applications_applicant_id_post_id_key") ||
+      combined.includes("applications_unique_per_job") ||
       combined.includes("duplicate key") ||
       combined.includes("already exists"))
   );
 }
+
+const resolveCompanyId = (criteria: Post["criteria"]) =>
+  criteria?.companyId || criteria?.company_id || null;
 
 export default function JobApplicationForm({
   jobPost,
@@ -97,7 +106,7 @@ export default function JobApplicationForm({
         if (isActive && appliedStatus) {
           setHasApplied(true);
         }
-      } catch (error) {
+      } catch {
         // Silently handle errors in production
       } finally {
         if (isActive) {
@@ -172,7 +181,7 @@ export default function JobApplicationForm({
           ? `${profile.name} ${profile.surname}`
           : profile?.full_name || profile?.username || null;
 
-      const { error } = await addApplication({
+      const { data, error } = await addApplication({
         user_id: user.id,
         post_id: jobPost.id,
         resume_id: selectedResume.id,
@@ -198,17 +207,117 @@ export default function JobApplicationForm({
       });
       if (error) throw error;
 
+      const createdApplication = Array.isArray(data) ? data[0] : data;
+
       // Send notification to job poster
       if (profile && jobPost.user_id && jobPost.user_id !== user.id) {
-        await notifyNewApplication(
-          jobPost.id, // Using post ID as application ID for now
-          jobPost.user_id,
-          applicantName || "Someone",
-          jobPost.title || "your job"
-        );
+        try {
+          await notifyNewApplication(
+            createdApplication?.id || jobPost.id,
+            jobPost.user_id,
+            applicantName || "Someone",
+            jobPost.title || "your job"
+          );
+        } catch (notificationError) {
+          console.error(
+            "Error notifying job poster about new application:",
+            notificationError
+          );
+        }
+      }
+
+      const companyId = resolveCompanyId(jobPost.criteria);
+      if (companyId && createdApplication) {
+        try {
+          const { data: company } = await supabase
+            .from("companies")
+            .select("id, name, logo_url, user_id, contact_email")
+            .eq("id", companyId)
+            .maybeSingle();
+
+          if (company) {
+            let ownerEmail = company.contact_email || null;
+
+            if (!ownerEmail && company.user_id) {
+              const { data: ownerProfile } = await supabase
+                .from("legacy_public_profiles")
+                .select("username")
+                .eq("id", company.user_id)
+                .maybeSingle();
+
+              if (ownerProfile?.username) {
+                ownerEmail = `${ownerProfile.username}@growork.com`;
+              }
+            }
+
+            if (ownerEmail) {
+              const emailHTML = generateStatusUpdateEmail(
+                {
+                  ...createdApplication,
+                  user_id: user.id,
+                  applicant_name_snapshot: applicantName,
+                  applicant_phone_snapshot: profile?.phone || null,
+                  job_title_snapshot: jobPost.title || null,
+                  resume_url: selectedResume.file_url,
+                  cover_letter: coverLetter.trim() || selectedCoverLetter?.file_url || null,
+                  documents: [
+                    {
+                      id: selectedResume.id,
+                      type: "cv",
+                      name: selectedResume.name,
+                      file_url: selectedResume.file_url,
+                    },
+                    ...(selectedCoverLetter
+                      ? [
+                          {
+                            id: selectedCoverLetter.id,
+                            type: "cover_letter",
+                            name: selectedCoverLetter.name,
+                            file_url: selectedCoverLetter.file_url,
+                          },
+                        ]
+                      : []),
+                  ],
+                  posts: {
+                    ...jobPost,
+                    created_at: jobPost.created_at,
+                  },
+                  profiles: {
+                    username: profile?.username || null,
+                    name: profile?.name || null,
+                    surname: profile?.surname || null,
+                    profession: profile?.profession || null,
+                    phone: profile?.phone || null,
+                    website: profile?.website || null,
+                    location: profile?.location || null,
+                    experience_years: profile?.experience_years || null,
+                    education: profile?.education || null,
+                    skills: profile?.skills || null,
+                    bio: profile?.bio || null,
+                  },
+                  companies: company,
+                },
+                "pending"
+              );
+
+              await sendEmailViaEdgeFunction({
+                to: ownerEmail,
+                subject: `New application for ${jobPost.title || "your job listing"}`,
+                html: emailHTML,
+              });
+            }
+          }
+        } catch (emailError) {
+          console.error("Error emailing company owner about new application:", emailError);
+        }
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      toast.show({
+        type: "success",
+        title: "Application submitted",
+        message: "Your application has been sent successfully.",
+      });
       setHasApplied(true);
     } catch (error: any) {
       // Handle duplicate application error specifically
